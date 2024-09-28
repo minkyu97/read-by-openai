@@ -82,7 +82,7 @@ onMessage(async (message) => {
 
         if (!response.ok || !response.body) {
           mediaSource.endOfStream();
-          return { type: "log", level: "error", data: "Failed to fetch audio" };
+          return;
         }
 
         const contentType = response.headers.get("content-type") ?? "audio/mpeg";

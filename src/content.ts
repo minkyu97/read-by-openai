@@ -47,13 +47,10 @@ closeAudio.addEventListener("click", () => {
   audio.pause();
 });
 
-let currentText = "";
-
 onMessage(async (message) => {
   switch (message.type) {
     case "tts":
       const config = message.config;
-      const currentText = message.text;
       let client = null;
       try {
         client = new OpenAI({

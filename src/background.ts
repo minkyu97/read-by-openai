@@ -38,7 +38,6 @@ async function onContextMenuItemClicked(
 function updateConfig(newConfig: Config) {
   Object.assign(CURRENT_CONFIG, newConfig);
   Browser.storage.local.set(CURRENT_CONFIG);
-  console.log(CURRENT_CONFIG);
 }
 
 async function init() {

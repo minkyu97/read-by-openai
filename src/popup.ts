@@ -5,13 +5,10 @@ import { Message, sendMessage } from "./message";
 const configForm = document.getElementById("config") as HTMLFormElement;
 
 window.onload = async () => {
-  console.log("onload");
-  console.log(configForm);
-  
-  
   const oldConfig = configSchema.parse(await Browser.storage.local.get());
 
-  for (const input of configForm.getElementsByTagName("input")) {
+  for (const _input of configForm.querySelectorAll("input, select")) {
+    const input = _input as (HTMLInputElement | HTMLSelectElement);
     const name = input.name;
     if (isConfigKey(name) && oldConfig[name] !== undefined) {
       input.value = oldConfig[name];
@@ -25,12 +22,10 @@ configForm.addEventListener("submit", async (e: SubmitEvent) => {
   const configForm = document.getElementById("config") as HTMLFormElement;
   const configFormData = new FormData(configForm);
   const config = configSchema.parse(Object.fromEntries(configFormData.entries()));
-  console.log(config);
 
   const message: Message = {
     type: "config-update",
     config,
   };
-  const response = await sendMessage(message);
-  console.log(response);
+  await sendMessage(message);
 });

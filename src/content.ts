@@ -28,6 +28,7 @@ downloadAudio.style.backgroundImage = `url(${Browser.runtime.getURL(
 downloadAudio.style.backgroundSize = "60%";
 downloadAudio.style.backgroundRepeat = "no-repeat";
 downloadAudio.style.backgroundPosition = "center";
+downloadAudio.style.cursor = "not-allowed";
 
 const audioContainer = document.createElement("div");
 audioContainer.style.position = "fixed";
@@ -46,6 +47,7 @@ document.body.appendChild(audioContainer);
 
 closeAudio.addEventListener("click", () => {
   audioContainer.style.display = "none";
+  downloadAudio.style.cursor = "not-allowed";
   audio.pause();
 });
 
@@ -121,6 +123,7 @@ function onSourceOpen(
         downloadAudio.download = `${window.location.hostname}.${
           contentType.split("/")[1]
         }`;
+        downloadAudio.style.cursor = "pointer";
         return;
       }
       try {

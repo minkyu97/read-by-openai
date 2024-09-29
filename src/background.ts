@@ -42,15 +42,10 @@ function updateConfig(newConfig: Config) {
 }
 
 async function init() {
-  console.log("hihi");
-
   onMessage(async (message) => {
     switch (message.type) {
       case "config-update":
         updateConfig(message.config);
-        return { type: "log", level: "info", data: "Config updated" };
-      default:
-        return { type: "log", level: "info", data: "Unsupported message type" };
     }
   });
   Browser.runtime.onInstalled.addListener(async () => {

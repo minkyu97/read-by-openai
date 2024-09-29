@@ -12,25 +12,18 @@ type TtsMessage = {
   config: Config;
 };
 
-type LogMessage = {
-  type: "log";
-  level: "info" | "error";
-  data: string;
-};
-
 export type Message =
   | ConfigUpdateMessage
-  | TtsMessage
-  | LogMessage;
+  | TtsMessage;
 
-export function onMessage(f: (message: Message) => Promise<Message>): void {
+export function onMessage(f: (message: Message) => Promise<Message | void>): void {
   Browser.runtime.onMessage.addListener(f);
 }
 
-export async function sendMessage(message: Message): Promise<Message> {
+export async function sendMessage(message: Message): Promise<Message | undefined> {
   return await Browser.runtime.sendMessage(message);
 }
 
-export async function sendTabMessage(tabId: number, message: Message): Promise<Message> {
+export async function sendTabMessage(tabId: number, message: Message): Promise<Message | undefined> {
   return await Browser.tabs.sendMessage(tabId, message);
 }

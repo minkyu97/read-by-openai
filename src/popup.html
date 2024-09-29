@@ -9,10 +9,24 @@
     <title>Popup</title>
   </head>
   <body>
-    <h1>vite-plugin-web-extension</h1>
+    <h1>Read By AI</h1>
     <form enctype="multipart/form-data" method="post" id="config">
-      <label for="api-key">API Key:</label>
-      <input type="text" name="apiKey" id="api-key"/>
+      <div>
+        <label for="api-key">API Key:</label>
+        <input type="text" name="apiKey" id="api-key" />
+      </div>
+      <div>
+        <label for="voice">Voice:</label>
+        <select name="voice" id="voice">
+          <!-- "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" -->
+          <option value="alloy">Alloy</option>
+          <option value="echo">Echo</option>
+          <option value="fable">Fable</option>
+          <option value="onyx">Onyx</option>
+          <option value="nova">Nova</option>
+          <option value="shimmer">Shimmer</option>
+        </select>
+      </div>
       <button type="submit">Save</button>
     </form>
   </body>

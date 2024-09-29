@@ -5,6 +5,10 @@ import { Message, sendMessage } from "./message";
 const configForm = document.getElementById("config") as HTMLFormElement;
 
 window.onload = async () => {
+  console.log("onload");
+  console.log(configForm);
+  
+  
   const oldConfig = configSchema.parse(await Browser.storage.local.get());
 
   for (const input of configForm.getElementsByTagName("input")) {
@@ -28,8 +32,5 @@ configForm.addEventListener("submit", async (e: SubmitEvent) => {
     config,
   };
   const response = await sendMessage(message);
-
-  if (response.type === "log") {
-    console[response.level](response.data);
-  }
+  console.log(response);
 });

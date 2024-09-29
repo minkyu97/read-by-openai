@@ -118,8 +118,7 @@ function onSourceOpen(
       if (done) {
         mediaSource.endOfStream();
         const blob = new Blob(audioChunks, { type: contentType });
-        audio.src = URL.createObjectURL(blob);
-        downloadAudio.href = audio.src;
+        downloadAudio.href = URL.createObjectURL(blob);
         downloadAudio.download = `${window.location.hostname}.${
           contentType.split("/")[1]
         }`;

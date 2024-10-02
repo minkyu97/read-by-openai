@@ -1,5 +1,6 @@
 import OpenAI, { OpenAIError } from "openai";
 import Browser from "webextension-polyfill";
+import { Config } from "./config";
 import { onMessage } from "./message";
 
 const audio = new Audio();
@@ -83,7 +84,7 @@ function onSourceOpen(
   message: {
     type: "tts";
     text: string;
-    config: import("/Users/mnkl/Projects/minkyu97/chrome-ai-agent/src/config").Config;
+    config: Config;
   },
   mediaSource: MediaSource
 ): (this: MediaSource, ev: Event) => any {

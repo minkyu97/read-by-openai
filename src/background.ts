@@ -2,13 +2,13 @@ import Browser, { Menus, Tabs } from "webextension-polyfill";
 import { Config, configSchema } from "./config";
 import { onMessage, sendTabMessage } from "./message";
 
-const CURRENT_CONFIG: Config = {
-  apiKey: "",
-  model: "tts-1",
-  voice: "alloy",
-};
+let CURRENT_CONFIG: Config | undefined;
 
-function createContextMenus() {
+async function getConfig(): Promise<Config> {
+  return CURRENT_CONFIG ?? configSchema.parse(await Browser.storage.local.get());
+}
+
+async function onInstall() {
   Browser.contextMenus.create({
     id: "read-aloud",
     title: "Read Aloud",
@@ -29,14 +29,14 @@ async function onContextMenuItemClicked(
     const response = sendTabMessage(tab.id, {
       type: "tts",
       text: info.selectionText,
-      config: CURRENT_CONFIG,
+      config: await getConfig(),
     });
     console.log(response);
   }
 }
 
 function updateConfig(newConfig: Config) {
-  Object.assign(CURRENT_CONFIG, newConfig);
+  CURRENT_CONFIG = newConfig;
   Browser.storage.local.set(CURRENT_CONFIG);
 }
 
@@ -47,17 +47,9 @@ async function init() {
         updateConfig(message.config);
     }
   });
-  Browser.runtime.onInstalled.addListener(async () => {
-    createContextMenus();
-  });
-  Browser.contextMenus.onClicked.addListener(onContextMenuItemClicked);
 
-  try {
-    const oldConfig = configSchema.parse(await Browser.storage.local.get());
-    Object.assign(CURRENT_CONFIG, oldConfig);
-  } catch (e) {
-    console.log(e);
-  }
+  Browser.runtime.onInstalled.addListener(onInstall);
+  Browser.contextMenus.onClicked.addListener(onContextMenuItemClicked);
 }
 
 init();

@@ -26,7 +26,7 @@ async function onContextMenuItemClicked(
   if (info.selectionText && tab?.id) {
     console.log(info.selectionText);
 
-    const response = sendTabMessage(tab.id, {
+    const response = await sendTabMessage(tab.id, {
       type: "tts",
       text: info.selectionText,
       config: await getConfig(),

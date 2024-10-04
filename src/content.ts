@@ -117,7 +117,7 @@ function onSourceOpen(
     const read = async () => {
       const { done, value } = await reader.read();
       if (done) {
-        mediaSource.endOfStream();
+        runAfterUpdateEnd(sourceBuffer, () => mediaSource.endOfStream());
         const blob = new Blob(audioChunks, { type: contentType });
         downloadAudio.href = URL.createObjectURL(blob);
         downloadAudio.download = `${window.location.hostname}.${
@@ -127,7 +127,7 @@ function onSourceOpen(
         return;
       }
       try {
-        sourceBuffer.appendBuffer(value);
+        runAfterUpdateEnd(sourceBuffer, () => sourceBuffer.appendBuffer(value));
         audioChunks.push(value);
         read();
       } catch (error) {
@@ -141,4 +141,15 @@ function onSourceOpen(
     audioContainer.style.display = "flex";
     audio.play();
   };
+}
+
+function runAfterUpdateEnd(
+  sourceBuffer: SourceBuffer,
+  callback: () => void
+): void {
+  if (sourceBuffer.updating) {
+    sourceBuffer.addEventListener("updateend", callback, { once: true });
+  } else {
+    callback();
+  }
 }

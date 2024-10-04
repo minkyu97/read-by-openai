@@ -12,9 +12,25 @@ type TtsMessage = {
   config: Config;
 };
 
+type StartMessage = {
+  type: "start";
+};
+
+type AudioChunkMessage = {
+  type: "audio-chunk";
+  chunk: number[];
+};
+
+type EndMessage = {
+  type: "end";
+};
+
 export type Message =
   | ConfigUpdateMessage
-  | TtsMessage;
+  | TtsMessage
+  | AudioChunkMessage
+  | StartMessage
+  | EndMessage;
 
 export function onMessage(f: (message: Message) => Promise<Message | void>): void {
   Browser.runtime.onMessage.addListener(f);

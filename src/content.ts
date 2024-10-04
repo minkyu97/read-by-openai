@@ -52,6 +52,14 @@ closeAudio.addEventListener("click", () => {
   audio.pause();
 });
 
+let mediaSource: MediaSource | undefined;
+let audioChunks: Uint8Array[] = [];
+let {
+  promise: sourceOpenPromise,
+  resolve: sourceOpenResolve,
+  reject: sourceOpenReject,
+} = Promise.withResolvers();
+
 onMessage(async (message) => {
   switch (message.type) {
     case "tts":
@@ -61,13 +69,61 @@ onMessage(async (message) => {
         dangerouslyAllowBrowser: true,
       });
 
-      const mediaSource = new MediaSource();
+      mediaSource = new MediaSource();
       audio.src = URL.createObjectURL(mediaSource);
 
       mediaSource.addEventListener(
         "sourceopen",
         onSourceOpen(client, config, message, mediaSource)
       );
+      break;
+    case "start":
+      console.log("start");
+
+      mediaSource = new MediaSource();
+      audio.src = URL.createObjectURL(mediaSource);
+      console.log(audio.src);
+
+      ({
+        promise: sourceOpenPromise,
+        resolve: sourceOpenResolve,
+        reject: sourceOpenReject,
+      } = Promise.withResolvers());
+
+      mediaSource.addEventListener("sourceopen", () => {
+        const contentType = "audio/mpeg";
+        mediaSource?.addSourceBuffer(contentType);
+        audioChunks = [];
+        sourceOpenResolve(null);
+        audioContainer.style.display = "flex";
+        audio.play();
+      });
+      break;
+    case "audio-chunk":
+      sourceOpenPromise.then(() => {
+        const sourceBuffer = mediaSource?.sourceBuffers[0];
+        if (sourceBuffer !== undefined)
+          runAfterUpdateEnd(sourceBuffer, () => {
+            sourceBuffer?.appendBuffer(new Uint8Array(message.chunk));
+          });
+      });
+      break;
+    case "end":
+      sourceOpenPromise.then(() => {
+        const sourceBuffer = mediaSource?.sourceBuffers[0];
+        if (sourceBuffer)
+          runAfterUpdateEnd(sourceBuffer, () => {
+            console.log("end");
+
+            mediaSource?.endOfStream();
+            const blob = new Blob(audioChunks, {
+              type: "audio/mpeg",
+            });
+            downloadAudio.href = URL.createObjectURL(blob);
+            downloadAudio.download = `${window.location.hostname}.mp3`;
+            downloadAudio.style.cursor = "pointer";
+          });
+      });
       break;
     default:
       console.error("Unsupported message type", message);

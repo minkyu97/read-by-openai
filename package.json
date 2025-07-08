@@ -10,11 +10,11 @@
     "watch": "vite build --watch --mode development"
   },
   "devDependencies": {
-    "@types/webextension-polyfill": "^0.10.0",
+    "@types/chrome": "^0.0.329",
+    "prettier": "^3.6.2",
     "typescript": "^5.3.2",
-    "vite": "^5.0.0",
-    "vite-plugin-web-extension": "^4.0.0",
-    "webextension-polyfill": "^0.10.0"
+    "vite": "^7.0.2",
+    "vite-plugin-web-extension": "^4.4.4"
   },
   "dependencies": {
     "openai": "^4.57.0",

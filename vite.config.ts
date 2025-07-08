@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, PluginOption } from "vite";
 import webExtension, { readJsonFile } from "vite-plugin-web-extension";
 
 function generateManifest() {
@@ -17,6 +17,7 @@ export default defineConfig({
     webExtension({
       manifest: generateManifest,
       watchFilePaths: ["package.json", "manifest.json"],
-    }),
+      additionalInputs: ["src/offscreen.html", "src/offscreen.ts"]
+    }) as PluginOption,
   ],
 });

@@ -1,11 +1,10 @@
-import Browser from "webextension-polyfill";
 import { configSchema, isConfigKey } from "./config";
-import { Message, sendMessage } from "./message";
+import { sendMessage } from "./message";
 
 const configForm = document.getElementById("config") as HTMLFormElement;
 
 window.onload = async () => {
-  const oldConfig = configSchema.parse(await Browser.storage.local.get());
+  const oldConfig = configSchema.parse(await chrome.storage.local.get());
 
   for (const _input of configForm.querySelectorAll("input, select")) {
     const input = _input as (HTMLInputElement | HTMLSelectElement);
@@ -21,11 +20,11 @@ configForm.addEventListener("submit", async (e: SubmitEvent) => {
 
   const configForm = document.getElementById("config") as HTMLFormElement;
   const configFormData = new FormData(configForm);
-  const config = configSchema.parse(Object.fromEntries(configFormData.entries()));
+  const newConfig = configSchema.parse(Object.fromEntries(configFormData.entries()));
 
-  const message: Message = {
+  await chrome.storage.local.set(newConfig);
+
+  await sendMessage({
     type: "config-update",
-    config,
-  };
-  await sendMessage(message);
+  })
 });

@@ -1,128 +1,71 @@
-import OpenAI from "openai";
-import Browser, { Menus, Tabs } from "webextension-polyfill";
-import { Config, configSchema } from "./config";
-import { onMessage, sendTabMessage } from "./message";
+import { sendOffscreenMessage } from "./message";
 
-let CURRENT_CONFIG: Config | undefined;
+let creatingOffScreen: Promise<void> | null = null;
 
-async function getConfig(): Promise<Config> {
-  return (
-    CURRENT_CONFIG ?? configSchema.parse(await Browser.storage.local.get())
-  );
+async function setupOffscreenDocument(path: string) {
+  // Check all windows controlled by the service worker to see if one
+  // of them is the offscreen document with the given path
+  const offscreenUrl = chrome.runtime.getURL(path);
+  const existingContexts = await chrome.runtime.getContexts({
+    contextTypes: ["OFFSCREEN_DOCUMENT"],
+    documentUrls: [offscreenUrl],
+  });
+
+  if (existingContexts.length > 0) {
+    return;
+  }
+
+  // create offscreen document
+  if (creatingOffScreen) {
+    await creatingOffScreen;
+  } else {
+    creatingOffScreen = chrome.offscreen.createDocument({
+      url: path,
+      reasons: [chrome.offscreen.Reason.AUDIO_PLAYBACK],
+      justification: "to read selected text using OpenAI API",
+    });
+    await creatingOffScreen;
+    creatingOffScreen = null;
+    console.log("Created offscreen document");
+  }
 }
 
-async function onInstall() {
-  Browser.contextMenus.create({
-    id: "read-aloud-legacy",
-    title: "Read Aloud (Legacy)",
-    type: "normal",
-    contexts: ["selection"],
+function onInstall() {
+  const menuId = chrome.contextMenus.create({
+    id: "read-by-chatgpt",
+    title: "Read by ChatGPT",
+    type: chrome.contextMenus.ItemType.NORMAL,
+    contexts: [chrome.contextMenus.ContextType.SELECTION],
+  }, () => {
+    if (chrome.runtime.lastError?.message) {
+      console.error(`Failed to create menu item : ${chrome.runtime.lastError.message}`);
+    }
   });
-  Browser.contextMenus.create({
-    id: "read-aloud",
-    title: "Read Aloud",
-    type: "normal",
-    contexts: ["selection"],
-  });
+  console.log(`Created menu item : ${menuId}`);
 }
 
-async function onContextMenuItemClicked(
-  info: Menus.OnClickData,
-  tab?: Tabs.Tab
+function onContextMenuItemClicked(
+  info: chrome.contextMenus.OnClickData,
 ) {
   switch (info.menuItemId) {
-    case "read-aloud":
-      readAloud(info, tab);
-      break;
-    case "read-aloud-legacy":
-      readAloudLegacy(info, tab);
+    case "read-by-chatgpt":
+      if (info.selectionText) readAloud(info.selectionText);
       break;
   }
 }
 
-async function readAloudLegacy(info: Menus.OnClickData, tab?: Tabs.Tab) {
-  console.log(info, tab);
-
-  if (info.selectionText && tab?.id) {
-    console.log(info.selectionText);
-
-    const response = await sendTabMessage(tab.id, {
-      type: "tts",
-      text: info.selectionText,
-      config: await getConfig(),
-    });
-    console.log(response);
-  }
-}
-
-async function readAloud(info: Menus.OnClickData, tab?: Tabs.Tab) {
-  console.log(info, tab);
-
-  if (info.selectionText && tab?.id) {
-    console.log(info.selectionText);
-
-    const config = await getConfig();
-
-    const client = new OpenAI({
-      apiKey: config.apiKey,
-      dangerouslyAllowBrowser: true,
-    });
-
-    const response = await client.audio.speech.create({
-      model: config.model,
-      voice: config.voice,
-      input: info.selectionText,
-    });
-    console.log(response);
-
-    if (!response.ok || !response.body) {
-      alert("Failed to generate audio");
-      return;
-    }
-
-    await sendTabMessage(tab.id, {
-      type: "start",
-    });
-
-    const reader = response.body.getReader();
-    let done = false;
-    let value: Uint8Array | undefined;
-    do {
-      ({ done, value } = await reader.read());
-
-      if (value) {
-        console.log("send");
-
-        await sendTabMessage(tab.id, {
-          type: "audio-chunk",
-          chunk: Array.from(value),
-        });
-      }
-    } while (!done);
-
-    console.log("end");
-
-    await sendTabMessage(tab.id, {
-      type: "end",
-    });
-  }
-}
-
-function updateConfig(newConfig: Config) {
-  CURRENT_CONFIG = newConfig;
-  Browser.storage.local.set(CURRENT_CONFIG);
+async function readAloud(text: string) {
+  await setupOffscreenDocument("/src/offscreen.html");
+  const offscreenResponse = await sendOffscreenMessage({
+    type: "audio",
+    text: text,
+  })
+  console.log(offscreenResponse);
 }
 
 async function init() {
-  onMessage(async (message) => {
-    switch (message.type) {
-      case "config-update":
-        updateConfig(message.config);
-    }
-  });
-
-  Browser.runtime.onInstalled.addListener(onInstall);
-  Browser.contextMenus.onClicked.addListener(onContextMenuItemClicked);
+  chrome.runtime.onInstalled.addListener(onInstall);
+  chrome.contextMenus.onClicked.addListener(onContextMenuItemClicked);
 }
 
 init();

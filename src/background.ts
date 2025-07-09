@@ -1,8 +1,16 @@
-import { sendOffscreenMessage } from "./message";
+import { Message, sendOffscreenMessage } from "./message";
 import { getConfig } from "./config";
 import OpenAI from "openai";
 
+enum PlaybackStatus {
+  Playing,
+  Paused,
+  Finished,
+}
+
 let creatingOffScreen: Promise<void> | null = null;
+let audioQueue: { sentence: string, audioData: string }[] = [];
+let playbackStatus = PlaybackStatus.Finished;
 
 async function setupOffscreenDocument(path: string) {
   // Check all windows controlled by the service worker to see if one
@@ -56,18 +64,16 @@ function onContextMenuItemClicked(
   }
 }
 
-let audioQueue: { sentence: string, audioData: string }[] = [];
-let isPlaying = false;
-
 async function processQueue() {
-  if (isPlaying || audioQueue.length === 0) {
+  if (playbackStatus == PlaybackStatus.Playing || playbackStatus == PlaybackStatus.Paused || audioQueue.length === 0) {
     return;
   }
-  isPlaying = true;
-  const { sentence, audioData } = audioQueue.shift()!;
+  playbackStatus = PlaybackStatus.Playing;
+  currentAudio = audioQueue.shift()!; // Set currentAudio
+  const { audioData } = currentAudio;
 
   if (!audioData) {
-    isPlaying = false;
+    playbackStatus = PlaybackStatus.Finished;
     return;
   }
 
@@ -78,14 +84,37 @@ async function processQueue() {
   });
 }
 
+let currentAudio: { sentence: string, audioData: string } | null = null;
+let lastReadAudioData: { sentence: string, audioData: string }[] = [];
+
 function handleRuntimeMessage(
-  message: { type: string },
-  sender: chrome.runtime.MessageSender,
-  sendResponse: (response?: any) => void,
+  message: Message,
 ) {
-  if (message.type === "playback-finished") {
-    isPlaying = false;
-    processQueue();
+  switch (message.type) {
+    case "playback-finished":
+      playbackStatus = PlaybackStatus.Finished;
+      processQueue();
+      break;
+    case "pause":
+      sendOffscreenMessage({ type: "pause" });
+      playbackStatus = PlaybackStatus.Paused;
+      break;
+    case "resume":
+      if (playbackStatus != PlaybackStatus.Paused) {
+        return;
+      }
+      playbackStatus = PlaybackStatus.Playing;
+      sendOffscreenMessage({ type: "resume" });
+      processQueue(); // Try to resume playback immediately
+      break;
+    case "replay":
+      if (lastReadAudioData.length == 0) {
+        return;
+      }
+      audioQueue = [...lastReadAudioData];
+      playbackStatus = PlaybackStatus.Finished;
+      processQueue();
+      break;
   }
 }
 
@@ -97,7 +126,8 @@ async function readAloud(text: string) {
 
   // Reset queue on new request
   audioQueue = [];
-  isPlaying = false;
+  playbackStatus = PlaybackStatus.Finished;
+  currentAudio = null;
 
   const config = await getConfig();
   const client = new OpenAI({
@@ -124,7 +154,9 @@ async function readAloud(text: string) {
       await new Promise<void>((resolve) => {
         reader.onloadend = () => {
           const base64data = reader.result as string;
-          audioQueue.push({ sentence, audioData: base64data });
+          const newItem = { sentence, audioData: base64data };
+          audioQueue.push(newItem);
+          lastReadAudioData.push(newItem);
           processQueue();
           resolve();
         };

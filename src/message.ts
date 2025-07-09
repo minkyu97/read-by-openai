@@ -18,11 +18,26 @@ type PlaybackFinishedMessage = {
   type: "playback-finished";
 }
 
+type PauseMessage = {
+  type: "pause";
+}
+
+type ResumeMessage = {
+  type: "resume";
+}
+
+type ReplayMessage = {
+  type: "replay";
+}
+
 export type Message =
   | ConfigUpdateMessage
   | AudioMessage
   | ResponseMessage
-  | PlaybackFinishedMessage;
+  | PlaybackFinishedMessage
+  | PauseMessage
+  | ResumeMessage
+  | ReplayMessage;
 
 export function onMessage(f: (message: Message, sender: MessageSender, sendResponse: (response?: Message) => void) => Promise<Message | void>): void {
   chrome.runtime.onMessage.addListener(f);

@@ -1,10 +1,12 @@
+import MessageSender = chrome.runtime.MessageSender;
+
 type ConfigUpdateMessage = {
   type: "config-update";
 };
 
 type AudioMessage = {
   type: "audio";
-  text: string;
+  base64: string;
 }
 
 type ResponseMessage = {
@@ -12,12 +14,17 @@ type ResponseMessage = {
   text: string;
 }
 
+type PlaybackFinishedMessage = {
+  type: "playback-finished";
+}
+
 export type Message =
   | ConfigUpdateMessage
   | AudioMessage
-  | ResponseMessage;
+  | ResponseMessage
+  | PlaybackFinishedMessage;
 
-export function onMessage(f: (message: Message) => Promise<Message | void>): void {
+export function onMessage(f: (message: Message, sender: MessageSender, sendResponse: (response?: Message) => void) => Promise<Message | void>): void {
   chrome.runtime.onMessage.addListener(f);
 }
 
@@ -25,7 +32,7 @@ export async function sendMessage(message: Message): Promise<Message | undefined
   return await chrome.runtime.sendMessage(message);
 }
 
-export async function sendOffscreenMessage(message: Message): Promise<Message | undefined> {
+export async function sendOffscreenMessage(message: Message): Promise<any> {
   return await chrome.runtime.sendMessage({ ...message, target: "offscreen" });
 }
 

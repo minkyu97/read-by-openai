@@ -1,37 +1,27 @@
 import { onMessage } from "./message";
-import { configSchema } from "./config";
-import OpenAI from "openai";
 
-onMessage(async (message) => {
+onMessage(async (message, _, sendResponse) => {
   switch (message.type) {
     case "audio":
-      await handleAudio(message.text);
-      return {
-        type: "response", text: "success"
-      };
+      await handleAudio(message.base64, sendResponse);
+      break;
   }
-  return;
 })
 
-async function handleAudio(text: string) {
-  const config = configSchema.parse(await chrome.storage.local.get());
-
-  const client = new OpenAI({
-    apiKey: config.apiKey,
-    dangerouslyAllowBrowser: true,
+async function handleAudio(base64: string, sendResponse: (response?: any) => void) {
+  console.log(`Playing audio`);
+  return new Promise<void>(async (resolve) => {
+    const blob = await (await fetch(base64)).blob();
+    const audioTag = document.createElement("audio");
+    audioTag.src = URL.createObjectURL(blob);
+    audioTag.addEventListener("ended", () => {
+      console.log(`Audio ended`);
+      chrome.runtime.sendMessage({ type: "playback-finished" });
+      sendResponse({
+        type: "response", text: "success"
+      });
+      resolve();
+    });
+    await audioTag.play();
   });
-
-  const response = await client.audio.speech.create({
-    model: config.model,
-    voice: config.voice,
-    input: text,
-  });
-
-  if (!response.ok || !response.body) {
-    console.error("Failed to generate audio");
-    return;
-  }
-  const audioTag = document.createElement("audio");
-  audioTag.src = URL.createObjectURL(await response.blob());
-  audioTag.play();
 }

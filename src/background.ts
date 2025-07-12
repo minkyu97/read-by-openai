@@ -2,41 +2,131 @@ import { Message, sendOffscreenMessage } from "./message";
 import { getConfig } from "./config";
 import OpenAI from "openai";
 
-enum PlaybackStatus {
-  Playing,
-  Paused,
-  Finished,
+import {LRUCache} from 'lru-cache';
+
+enum OffscreenStatus {
+  PLAYING,
+  PAUSED,
+  FINISHED,
 }
+const OFFSCREEN_PATH = "src/offscreen.html"
 
 let creatingOffScreen: Promise<void> | null = null;
-let audioQueue: { sentence: string, audioData: string }[] = [];
-let playbackStatus = PlaybackStatus.Finished;
+let cache = new LRUCache({
+  max: 1000,
+  maxSize: 100_000_000,
+  sizeCalculation: (value: string, key: string) => {
+    return (key.length + value.length) * 2;
+  }
+});
+let textQueue: string[] = [];
+let textPointer = 0;
+let playbackStatus = OffscreenStatus.FINISHED;
 
-async function setupOffscreenDocument(path: string) {
-  // Check all windows controlled by the service worker to see if one
-  // of them is the offscreen document with the given path
-  const offscreenUrl = chrome.runtime.getURL(path);
+async function offscreenExist() {
+  const offscreenUrl = chrome.runtime.getURL(OFFSCREEN_PATH);
   const existingContexts = await chrome.runtime.getContexts({
     contextTypes: ["OFFSCREEN_DOCUMENT"],
     documentUrls: [offscreenUrl],
   });
 
-  if (existingContexts.length > 0) {
-    return;
-  }
+  return existingContexts.length > 0;
+}
+
+async function setupOffscreenDocument() {
+  // Check all windows controlled by the service worker to see if one
+  // of them is the offscreen document with the given path
+  if (await offscreenExist()) return;
 
   // create offscreen document
   if (creatingOffScreen) {
     await creatingOffScreen;
   } else {
     creatingOffScreen = chrome.offscreen.createDocument({
-      url: path,
+      url: OFFSCREEN_PATH,
       reasons: [chrome.offscreen.Reason.AUDIO_PLAYBACK],
       justification: "to read selected text using OpenAI API",
     });
     await creatingOffScreen;
     creatingOffScreen = null;
     console.log("Created offscreen document");
+  }
+}
+
+async function readNextLine() {
+  if (textPointer == textQueue.length) {
+    return;
+  }
+
+  await setupOffscreenDocument();
+  await sendOffscreenMessage({
+    type: "audio",
+    base64: cache.get(textQueue[textPointer++]) ?? "",
+  });
+}
+
+async function tryNextLine() {
+  if (playbackStatus == OffscreenStatus.PLAYING || playbackStatus == OffscreenStatus.PAUSED) {
+    return;
+  }
+  playbackStatus = OffscreenStatus.PLAYING;
+  await readNextLine();
+}
+
+async function generateAudio(sentence: string) {
+  if (cache.has(sentence)) {
+    return;
+  }
+  const config = await getConfig();
+  const client = new OpenAI({
+    apiKey: config.apiKey,
+    dangerouslyAllowBrowser: true,
+  });
+
+  const response = await client.audio.speech.create({
+    model: config.model,
+    voice: config.voice,
+    input: sentence,
+  });
+
+  if (!response.ok || !response.body) {
+    throw new Error("Failed to call OpenAI API");
+  }
+
+  const blob = await response.blob();
+  const reader = new FileReader();
+  reader.readAsDataURL(blob);
+  await new Promise<void>((resolve) => {
+    reader.onloadend = () => {
+      const base64data = reader.result as string;
+      cache.set(sentence, base64data);
+      resolve();
+    };
+  });
+}
+
+async function readAloud(text: string) {
+  const segmenter = new Intl.Segmenter(undefined, {granularity: 'sentence'});
+  const sentences = Array.from(segmenter.segment(text)).map(s => s.segment);
+  if (!sentences) {
+    return;
+  }
+
+  // Reset queue on new request
+  textQueue = Array.from(sentences);
+  await playFromFirstLine();
+}
+
+async function playFromFirstLine() {
+  textPointer = 0;
+
+  for (const sentence of textQueue) {
+    try {
+      await generateAudio(sentence);
+    } catch (error) {
+      console.error("Audio generation failed:", error);
+    }
+    await tryNextLine();
   }
 }
 
@@ -64,106 +154,30 @@ function onContextMenuItemClicked(
   }
 }
 
-async function processQueue() {
-  if (playbackStatus == PlaybackStatus.Playing || playbackStatus == PlaybackStatus.Paused || audioQueue.length === 0) {
-    return;
-  }
-  playbackStatus = PlaybackStatus.Playing;
-  currentAudio = audioQueue.shift()!; // Set currentAudio
-  const { audioData } = currentAudio;
-
-  if (!audioData) {
-    playbackStatus = PlaybackStatus.Finished;
-    return;
-  }
-
-  await setupOffscreenDocument("/src/offscreen.html");
-  sendOffscreenMessage({
-    type: "audio",
-    base64: audioData,
-  });
-}
-
-let currentAudio: { sentence: string, audioData: string } | null = null;
-let lastReadAudioData: { sentence: string, audioData: string }[] = [];
-
-function handleRuntimeMessage(
+async function handleRuntimeMessage(
   message: Message,
 ) {
   switch (message.type) {
     case "playback-finished":
-      playbackStatus = PlaybackStatus.Finished;
-      processQueue();
+      playbackStatus = OffscreenStatus.FINISHED;
+      await tryNextLine();
       break;
     case "pause":
-      sendOffscreenMessage({ type: "pause" });
-      playbackStatus = PlaybackStatus.Paused;
+      await sendOffscreenMessage({ type: "pause" });
+      playbackStatus = OffscreenStatus.PAUSED;
       break;
     case "resume":
-      if (playbackStatus != PlaybackStatus.Paused) {
+      if (playbackStatus != OffscreenStatus.PAUSED) {
         return;
       }
-      playbackStatus = PlaybackStatus.Playing;
-      sendOffscreenMessage({ type: "resume" });
-      processQueue(); // Try to resume playback immediately
+      playbackStatus = OffscreenStatus.PLAYING;
+      await sendOffscreenMessage({ type: "resume" });
+      await tryNextLine(); // Try to resume playback immediately
       break;
     case "replay":
-      if (lastReadAudioData.length == 0) {
-        return;
-      }
-      audioQueue = [...lastReadAudioData];
-      playbackStatus = PlaybackStatus.Finished;
-      processQueue();
+      await sendOffscreenMessage({ type: "pause" });
+      await playFromFirstLine();
       break;
-  }
-}
-
-async function readAloud(text: string) {
-  const sentences = text.match(/[^.!?]+(?:[.!?]|$)/g) || [text];
-  if (!sentences) {
-    return;
-  }
-
-  // Reset queue on new request
-  audioQueue = [];
-  playbackStatus = PlaybackStatus.Finished;
-  currentAudio = null;
-
-  const config = await getConfig();
-  const client = new OpenAI({
-    apiKey: config.apiKey,
-    dangerouslyAllowBrowser: true,
-  });
-
-  for (const sentence of sentences) {
-    try {
-      const response = await client.audio.speech.create({
-        model: config.model,
-        voice: config.voice,
-        input: sentence,
-      });
-
-      if (!response.ok || !response.body) {
-        console.error("Failed to generate audio");
-        continue;
-      }
-
-      const blob = await response.blob();
-      const reader = new FileReader();
-      reader.readAsDataURL(blob);
-      await new Promise<void>((resolve) => {
-        reader.onloadend = () => {
-          const base64data = reader.result as string;
-          const newItem = { sentence, audioData: base64data };
-          audioQueue.push(newItem);
-          lastReadAudioData.push(newItem);
-          processQueue();
-          resolve();
-        };
-      });
-    } catch (error) {
-      console.error("Audio generation failed:", error);
-    }
   }
 }
 

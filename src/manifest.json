@@ -1,5 +1,8 @@
 {
   "manifest_version": 3,
+  "name": "Read by AI",
+  "version": "1.0.0",
+  "description": "Read selected text aloud using AI-powered text-to-speech",
   "icons": {
     "16": "icon/16.png",
     "32": "icon/32.png",
@@ -8,16 +11,24 @@
     "128": "icon/128.png"
   },
   "action": {
-    "default_popup": "src/popup.html"
+    "default_popup": "src/popup.html",
+    "default_title": "Read by AI Settings"
   },
   "background": {
     "service_worker": "src/background.ts"
   },
-  "permissions": ["storage", "contextMenus", "offscreen"],
+  "permissions": [
+    "storage",
+    "contextMenus",
+    "offscreen",
+    "activeTab",
+    "tabs"
+  ],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["src/content.ts"]
+      "js": ["src/content.ts"],
+      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [{

@@ -30,11 +30,32 @@ type ReplayMessage = {
   type: "replay";
 }
 
+type PlaybackStartedMessage = {
+  type: "playback-started";
+}
+
+type PlaybackPausedMessage = {
+  type: "playback-paused";
+}
+
+type PlaybackResumedMessage = {
+  type: "playback-resumed";
+}
+
+type PlaybackErrorMessage = {
+  type: "playback-error";
+  error: string;
+}
+
 export type Message =
   | ConfigUpdateMessage
   | AudioMessage
   | ResponseMessage
   | PlaybackFinishedMessage
+  | PlaybackStartedMessage
+  | PlaybackPausedMessage
+  | PlaybackResumedMessage
+  | PlaybackErrorMessage
   | PauseMessage
   | ResumeMessage
   | ReplayMessage;

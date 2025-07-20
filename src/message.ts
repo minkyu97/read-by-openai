@@ -87,6 +87,10 @@ type ConfigMessage = {
   config: Config;
 }
 
+type DiagnoseMessage = {
+  type: "diagnose";
+}
+
 export type Message =
   | ConfigUpdateMessage
   | AudioMessage
@@ -106,7 +110,19 @@ export type Message =
   | PrevSentenceMessage
   | SentenceUpdateMessage
   | GetConfigMessage
-  | ConfigMessage;
+  | ConfigMessage
+  | DiagnoseMessage;
+
+export function onMessage(
+  callback: (message: Message, sender: MessageSender) => Promise<Message | undefined>
+): void {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    callback(message, sender).then(response => {
+      sendResponse(response);
+    });
+    return true; // Keep the message channel open for async response
+  });
+}
 
 export async function sendMessage(message: Message): Promise<Message | undefined> {
   return await chrome.runtime.sendMessage(message);

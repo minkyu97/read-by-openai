@@ -1,4 +1,4 @@
-import { Message, sendOffscreenMessage } from "./message";
+import { Message, onMessage, sendOffscreenMessage } from "./message";
 import { getConfig } from "./config";
 import OpenAI from "openai";
 import { LRUCache } from 'lru-cache';
@@ -302,7 +302,7 @@ class AudioManager {
     }
   }
 
-  public async handleMessage(message: Message, sender: chrome.runtime.MessageSender): Promise<void> {
+  public async handleMessage(message: Message, sender: chrome.runtime.MessageSender): Promise<Message | undefined> {
     console.log('handleMessage called with:', message.type);
 
     // Update current tab ID if message comes from a content script
@@ -359,24 +359,22 @@ class AudioManager {
         // Reset OpenAI client to pick up new config
         this.openAIClient = null;
         break;
-    }
-  }
-
-  public async handleConfigMessage(message: Message, sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void): Promise<void> {
-    console.log('handleConfigMessage called with:', message.type);
-    let response = undefined;
-
-    switch (message.type) {
       case "get-config":
         console.log('get-config message received, fetching config');
-        response = {
+        return {
           type: "config",
           config: await getConfig(),
         };
+      case "diagnose":
+        console.log('diagnose message received, running diagnostics');
+        await this.diagnose();
+        break;
+      default:
+        console.warn('Unknown message type:', message.type);
         break;
     }
 
-    sendResponse(response);
+    return;
   }
 
   public getPlaybackStatus(): OffscreenStatus {
@@ -447,21 +445,7 @@ async function init(): Promise<void> {
   
   chrome.runtime.onInstalled.addListener(onInstall);
   chrome.contextMenus.onClicked.addListener(onContextMenuItemClicked);
-  chrome.runtime.onMessage.addListener((message, sender) => {
-    audioManager.handleMessage(message, sender);
-  });
-
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    audioManager.handleConfigMessage(message, sender, sendResponse);
-    return true; // Keep the message channel open for async response
-  });
-  
-  // Add diagnostic command for testing
-  chrome.runtime.onMessage.addListener((message) => {
-    if (message.type === 'diagnose') {
-      audioManager.diagnose();
-    }
-  });
+  onMessage(audioManager.handleMessage.bind(audioManager));
 }
 
 init().catch(console.error);

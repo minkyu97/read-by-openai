@@ -20,4 +20,7 @@ export default defineConfig({
       additionalInputs: ["src/offscreen.html", "src/offscreen.ts"]
     }) as PluginOption,
   ],
+  build: {
+    sourcemap: true,
+  }
 });

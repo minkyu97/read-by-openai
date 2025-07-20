@@ -4,6 +4,7 @@ class OffscreenAudioManager {
   private audioTag: HTMLAudioElement | null = null;
   private isPlaying = false;
   private currentAudioUrl: string | null = null;
+  private progressInterval: number | null = null;
 
   constructor() {
     this.init();
@@ -21,6 +22,12 @@ class OffscreenAudioManager {
             break;
           case "resume":
             await this.resumeAudio();
+            break;
+          case "seek":
+            this.seekAudio(message.seconds);
+            break;
+          case "speed":
+            this.setSpeed(message.rate);
             break;
         }
       } catch (error) {
@@ -86,6 +93,9 @@ class OffscreenAudioManager {
       this.isPlaying = true;
       console.log('Audio playback started successfully');
       
+      // Start progress tracking
+      this.startProgressTracking();
+      
     } catch (error) {
       console.error('Error playing audio:', error);
       sendResponse({ type: "error", error: error instanceof Error ? error.message : String(error) });
@@ -114,7 +124,55 @@ class OffscreenAudioManager {
   }
 
 
+  private seekAudio(seconds: number): void {
+    if (this.audioTag) {
+      const newTime = Math.max(0, Math.min(this.audioTag.duration, this.audioTag.currentTime + seconds));
+      this.audioTag.currentTime = newTime;
+      console.log(`Seeking to ${newTime}s`);
+    }
+  }
+
+  private setSpeed(rate: number): void {
+    if (this.audioTag) {
+      this.audioTag.playbackRate = rate;
+      console.log(`Playback speed set to ${rate}x`);
+    }
+  }
+
+  private startProgressTracking(): void {
+    this.stopProgressTracking();
+    
+    if (this.audioTag) {
+      // Send initial progress
+      this.sendProgress();
+      
+      // Update progress every 200ms
+      this.progressInterval = window.setInterval(() => {
+        this.sendProgress();
+      }, 200);
+    }
+  }
+
+  private stopProgressTracking(): void {
+    if (this.progressInterval) {
+      clearInterval(this.progressInterval);
+      this.progressInterval = null;
+    }
+  }
+
+  private sendProgress(): void {
+    if (this.audioTag && !isNaN(this.audioTag.duration)) {
+      chrome.runtime.sendMessage({
+        type: "playback-progress",
+        currentTime: this.audioTag.currentTime,
+        duration: this.audioTag.duration
+      });
+    }
+  }
+
   private cleanup(): void {
+    this.stopProgressTracking();
+    
     if (this.audioTag) {
       this.audioTag.pause();
       this.audioTag.removeEventListener("ended", this.handleAudioEnded);

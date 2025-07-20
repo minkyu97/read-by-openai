@@ -278,6 +278,15 @@ class AudioManager {
         await this.notifyContentScript({ type: "playback-started" });
         await this.playFromFirstLine();
         break;
+      case "seek":
+        await sendOffscreenMessage({ type: "seek", seconds: message.seconds });
+        break;
+      case "speed":
+        await sendOffscreenMessage({ type: "speed", rate: message.rate });
+        break;
+      case "playback-progress":
+        await this.notifyContentScript(message);
+        break;
       case "config-update":
         // Reset OpenAI client to pick up new config
         this.openAIClient = null;

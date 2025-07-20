@@ -47,6 +47,22 @@ type PlaybackErrorMessage = {
   error: string;
 }
 
+type SeekMessage = {
+  type: "seek";
+  seconds: number;
+}
+
+type SpeedMessage = {
+  type: "speed";
+  rate: number;
+}
+
+type PlaybackProgressMessage = {
+  type: "playback-progress";
+  currentTime: number;
+  duration: number;
+}
+
 export type Message =
   | ConfigUpdateMessage
   | AudioMessage
@@ -56,9 +72,12 @@ export type Message =
   | PlaybackPausedMessage
   | PlaybackResumedMessage
   | PlaybackErrorMessage
+  | PlaybackProgressMessage
   | PauseMessage
   | ResumeMessage
-  | ReplayMessage;
+  | ReplayMessage
+  | SeekMessage
+  | SpeedMessage;
 
 export function onMessage(f: (message: Message, sender: MessageSender, sendResponse: (response?: Message) => void) => Promise<Message | void>): void {
   chrome.runtime.onMessage.addListener(f);

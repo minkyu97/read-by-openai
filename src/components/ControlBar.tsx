@@ -7,6 +7,9 @@ interface ControlBarState {
   isVisible: boolean;
   hasError: boolean;
   isHovered: boolean;
+  currentTime: number;
+  duration: number;
+  playbackRate: number;
 }
 
 interface ControlBarProps {
@@ -19,7 +22,10 @@ const ControlBar: React.FC<ControlBarProps> = ({ className }) => {
     isLoading: false,
     isVisible: false,
     hasError: false,
-    isHovered: false
+    isHovered: false,
+    currentTime: 0,
+    duration: 0,
+    playbackRate: 1
   });
 
   const hideTimeoutRef = useRef<number | null>(null);
@@ -76,13 +82,44 @@ const ControlBar: React.FC<ControlBarProps> = ({ className }) => {
       await sendMessageWithRetry({ type: "replay" });
       updateState({ 
         isPlaying: true,
-        isLoading: false 
+        isLoading: false,
+        currentTime: 0
       });
     } catch (error) {
       updateState({ isLoading: false });
       console.error('Replay error:', error);
     }
   }, [state.isLoading, sendMessageWithRetry, updateState]);
+
+  const handleSeek = useCallback(async (seconds: number) => {
+    if (state.isLoading) return;
+
+    try {
+      updateState({ isLoading: true });
+      await sendMessageWithRetry({ type: "seek", seconds });
+      updateState({ isLoading: false });
+    } catch (error) {
+      updateState({ isLoading: false });
+      console.error('Seek error:', error);
+    }
+  }, [state.isLoading, sendMessageWithRetry, updateState]);
+
+  const handleSpeedChange = useCallback(async (rate: number) => {
+    if (state.isLoading) return;
+
+    try {
+      await sendMessageWithRetry({ type: "speed", rate });
+      updateState({ playbackRate: rate });
+    } catch (error) {
+      console.error('Speed change error:', error);
+    }
+  }, [state.isLoading, sendMessageWithRetry, updateState]);
+
+  const formatTime = useCallback((seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }, []);
 
   const clearHideTimeout = useCallback(() => {
     if (hideTimeoutRef.current) {
@@ -143,8 +180,14 @@ const ControlBar: React.FC<ControlBarProps> = ({ className }) => {
     } else if (e.altKey && e.key === 'r') {
       e.preventDefault();
       handleReplay();
+    } else if (e.altKey && e.key === 'ArrowLeft') {
+      e.preventDefault();
+      handleSeek(-10);
+    } else if (e.altKey && e.key === 'ArrowRight') {
+      e.preventDefault();
+      handleSeek(10);
     }
-  }, [handlePlayPause, handleReplay]);
+  }, [handlePlayPause, handleReplay, handleSeek]);
 
   const handleMessage = useCallback(async (message: any): Promise<void> => {
     switch (message.type) {
@@ -164,6 +207,12 @@ const ControlBar: React.FC<ControlBarProps> = ({ className }) => {
         updateState({ 
           isPlaying: false,
           hasError: true 
+        });
+        break;
+      case 'playback-progress':
+        updateState({ 
+          currentTime: message.currentTime,
+          duration: message.duration 
         });
         break;
     }
@@ -206,6 +255,40 @@ const ControlBar: React.FC<ControlBarProps> = ({ className }) => {
     >
       <div className={statusClasses} aria-live="polite"></div>
       
+      {/* Progress info */}
+      {state.duration > 0 && (
+        <div className="progress-info">
+          <span className="time-display">
+            {formatTime(state.currentTime)} / {formatTime(state.duration)}
+          </span>
+          <div className="progress-bar">
+            <div 
+              className="progress-fill" 
+              style={{ width: `${(state.currentTime / state.duration) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
+      
+      {/* Seek backward button */}
+      <button 
+        onClick={() => handleSeek(-10)}
+        disabled={state.isLoading}
+        type="button" 
+        aria-label="Seek backward 10 seconds"
+        className="seek-button"
+      >
+        <span className="button-icon">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <g transform="scale(-1,1)" transform-origin="center">
+              <path d="M11.596 8.697l-6.363 3.692A.5.5 0 0 1 4.5 11.95V4.05a.5.5 0 0 1 .733-.44l6.363 3.692a.5.5 0 0 1 0 .88z"/>
+              <path d="M11.5 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5z"/>
+            </g>
+          </svg>
+        </span>
+      </button>
+      
+      {/* Play/Pause button */}
       <button 
         onClick={handlePlayPause}
         disabled={state.isLoading}
@@ -237,6 +320,23 @@ const ControlBar: React.FC<ControlBarProps> = ({ className }) => {
         )}
       </button>
       
+      {/* Seek forward button */}
+      <button 
+        onClick={() => handleSeek(10)}
+        disabled={state.isLoading}
+        type="button" 
+        aria-label="Seek forward 10 seconds"
+        className="seek-button"
+      >
+        <span className="button-icon">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M4.404 8.697l6.363 3.692a.5.5 0 0 0 .733-.44V4.05a.5.5 0 0 0-.733-.44L4.404 7.303a.5.5 0 0 0 0 .88z"/>
+            <path d="M4.5 4a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 1 0v-7a.5.5 0 0 0-.5-.5z"/>
+          </svg>
+        </span>
+      </button>
+      
+      {/* Replay button */}
       <button 
         onClick={handleReplay}
         disabled={state.isLoading}
@@ -250,6 +350,18 @@ const ControlBar: React.FC<ControlBarProps> = ({ className }) => {
           </svg>
         </span>
       </button>
+      
+      {/* Speed control */}
+      <div className="speed-control">
+        <button 
+          onClick={() => handleSpeedChange(state.playbackRate === 1 ? 1.5 : state.playbackRate === 1.5 ? 2 : 1)}
+          type="button"
+          aria-label={`Playback speed: ${state.playbackRate}x`}
+          className="speed-button"
+        >
+          <span className="speed-text">{state.playbackRate}x</span>
+        </button>
+      </div>
     </div>
   );
 };

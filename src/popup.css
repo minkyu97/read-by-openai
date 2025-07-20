@@ -27,7 +27,8 @@ html, body {
 .form-group {
     margin: 10px 0;
     display: flex;
-    height: 1.2rem;
+    flex-wrap: wrap;
+    min-height: 1.2rem;
 }
 
 .form-group label {
@@ -81,4 +82,13 @@ html, body {
     background-color: #f8d7da;
     color: #721c24;
     border: 1px solid #f5c6cb;
+}
+
+.help-text {
+    width: 100%;
+    font-size: 11px;
+    color: #666;
+    margin-top: 4px;
+    margin-left: calc(33.33% + 10px);
+    display: block;
 }

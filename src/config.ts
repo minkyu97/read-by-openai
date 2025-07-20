@@ -6,9 +6,7 @@ export const configSchema = z.object({
   voice: z
     .enum(["alloy", "echo", "fable", "onyx", "nova", "shimmer"])
     .default("alloy"),
-  dbName: z.string().default("MyDB"),
-  dbVersion: z.number().default(1),
-  dbStoreName: z.string().default("data"),
+  seekDuration: z.number().min(1).max(60).default(10),
 });
 export type Config = z.infer<typeof configSchema>;
 

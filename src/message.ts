@@ -1,3 +1,4 @@
+import { Config } from "./config";
 import MessageSender = chrome.runtime.MessageSender;
 
 type ConfigUpdateMessage = {
@@ -63,6 +64,29 @@ type PlaybackProgressMessage = {
   duration: number;
 }
 
+type NextSentenceMessage = {
+  type: "next-sentence";
+}
+
+type PrevSentenceMessage = {
+  type: "prev-sentence";
+}
+
+type SentenceUpdateMessage = {
+  type: "sentence-update";
+  current: number;
+  total: number;
+}
+
+type GetConfigMessage = {
+  type: "get-config";
+}
+
+type ConfigMessage = {
+  type: "config";
+  config: Config;
+}
+
 export type Message =
   | ConfigUpdateMessage
   | AudioMessage
@@ -77,11 +101,12 @@ export type Message =
   | ResumeMessage
   | ReplayMessage
   | SeekMessage
-  | SpeedMessage;
-
-export function onMessage(f: (message: Message, sender: MessageSender, sendResponse: (response?: Message) => void) => Promise<Message | void>): void {
-  chrome.runtime.onMessage.addListener(f);
-}
+  | SpeedMessage
+  | NextSentenceMessage
+  | PrevSentenceMessage
+  | SentenceUpdateMessage
+  | GetConfigMessage
+  | ConfigMessage;
 
 export async function sendMessage(message: Message): Promise<Message | undefined> {
   return await chrome.runtime.sendMessage(message);
@@ -93,4 +118,12 @@ export async function sendOffscreenMessage(message: Message): Promise<any> {
 
 export async function sendTabMessage(tabId: number, message: Message): Promise<Message | undefined> {
   return await chrome.tabs.sendMessage(tabId, message);
+}
+
+export async function getConfigMessage(): Promise<Config> {
+  const response = await sendMessage({ type: "get-config" });
+  if (response && response.type === "config") {
+    return response.config;
+  }
+  throw new Error("Failed to get config");
 }

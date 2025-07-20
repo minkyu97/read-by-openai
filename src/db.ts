@@ -68,7 +68,7 @@ class IndexedDBManager {
 }
 
 async function createDB() {
-  const db = new IndexedDBManager("MyDB", 1, "data");
+  const db = new IndexedDBManager("ConfigDB", 1, "data");
   await db.init();
   return db;
 }

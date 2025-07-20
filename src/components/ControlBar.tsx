@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { sendMessage, onMessage } from '../message';
+import { getConfigMessage, sendMessage } from '../message';
 
 interface ControlBarState {
   isPlaying: boolean;
@@ -10,6 +10,9 @@ interface ControlBarState {
   currentTime: number;
   duration: number;
   playbackRate: number;
+  seekDuration: number;
+  currentSentence: number;
+  totalSentences: number;
 }
 
 interface ControlBarProps {
@@ -25,8 +28,14 @@ const ControlBar: React.FC<ControlBarProps> = ({ className }) => {
     isHovered: false,
     currentTime: 0,
     duration: 0,
-    playbackRate: 1
+    playbackRate: 1,
+    seekDuration: 10,
+    currentSentence: 0,
+    totalSentences: 0
   });
+  console.log('ControlBar state:', state);
+
+  const playbackRateOptions = [0.75, 1, 1.5, 2];
 
   const hideTimeoutRef = useRef<number | null>(null);
   const lastMouseXRef = useRef<number>(0);
@@ -121,6 +130,32 @@ const ControlBar: React.FC<ControlBarProps> = ({ className }) => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   }, []);
 
+  const handleNextSentence = useCallback(async () => {
+    if (state.isLoading) return;
+
+    try {
+      updateState({ isLoading: true });
+      await sendMessageWithRetry({ type: "next-sentence" });
+      updateState({ isLoading: false });
+    } catch (error) {
+      updateState({ isLoading: false });
+      console.error('Next sentence error:', error);
+    }
+  }, [state.isLoading, sendMessageWithRetry, updateState]);
+
+  const handlePrevSentence = useCallback(async () => {
+    if (state.isLoading) return;
+
+    try {
+      updateState({ isLoading: true });
+      await sendMessageWithRetry({ type: "prev-sentence" });
+      updateState({ isLoading: false });
+    } catch (error) {
+      updateState({ isLoading: false });
+      console.error('Previous sentence error:', error);
+    }
+  }, [state.isLoading, sendMessageWithRetry, updateState]);
+
   const clearHideTimeout = useCallback(() => {
     if (hideTimeoutRef.current) {
       clearTimeout(hideTimeoutRef.current);
@@ -182,12 +217,18 @@ const ControlBar: React.FC<ControlBarProps> = ({ className }) => {
       handleReplay();
     } else if (e.altKey && e.key === 'ArrowLeft') {
       e.preventDefault();
-      handleSeek(-10);
+      handleSeek(-state.seekDuration);
     } else if (e.altKey && e.key === 'ArrowRight') {
       e.preventDefault();
-      handleSeek(10);
+      handleSeek(state.seekDuration);
+    } else if (e.altKey && e.key === 'ArrowUp') {
+      e.preventDefault();
+      handleNextSentence();
+    } else if (e.altKey && e.key === 'ArrowDown') {
+      e.preventDefault();
+      handlePrevSentence();
     }
-  }, [handlePlayPause, handleReplay, handleSeek]);
+  }, [handlePlayPause, handleReplay, handleSeek, handleNextSentence, handlePrevSentence, state.seekDuration]);
 
   const handleMessage = useCallback(async (message: any): Promise<void> => {
     switch (message.type) {
@@ -215,6 +256,12 @@ const ControlBar: React.FC<ControlBarProps> = ({ className }) => {
           duration: message.duration 
         });
         break;
+      case 'sentence-update':
+        updateState({
+          currentSentence: message.current,
+          totalSentences: message.total
+        });
+        break;
     }
   }, [updateState]);
 
@@ -222,7 +269,7 @@ const ControlBar: React.FC<ControlBarProps> = ({ className }) => {
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('keydown', handleKeydown);
     
-    onMessage(handleMessage);
+    chrome.runtime.onMessage.addListener(handleMessage);
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
@@ -230,6 +277,14 @@ const ControlBar: React.FC<ControlBarProps> = ({ className }) => {
       clearHideTimeout();
     };
   }, [handleMouseMove, handleKeydown, handleMessage, clearHideTimeout]);
+
+  useEffect(() => {
+    // Load seek duration from config
+    getConfigMessage().then(config => {
+      console.log('Loaded config:', config);
+      updateState({ seekDuration: config.seekDuration });
+    });
+  }, [updateState]);
 
   const containerClasses = [
     'read-by-ai-control-bar',
@@ -267,23 +322,42 @@ const ControlBar: React.FC<ControlBarProps> = ({ className }) => {
               style={{ width: `${(state.currentTime / state.duration) * 100}%` }}
             />
           </div>
+          {state.totalSentences > 0 && (
+            <span className="sentence-info">
+              Sentence {state.currentSentence} / {state.totalSentences}
+            </span>
+          )}
         </div>
       )}
       
-      {/* Seek backward button */}
+      {/* Previous sentence button */}
       <button 
-        onClick={() => handleSeek(-10)}
+        onClick={handlePrevSentence}
         disabled={state.isLoading}
         type="button" 
-        aria-label="Seek backward 10 seconds"
+        aria-label="Previous sentence"
+        className="sentence-button"
+      >
+        <span className="button-icon">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M4 8a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7A.5.5 0 0 1 4 8z"/>
+            <path d="M5.354 4.146a.5.5 0 0 1 0 .708L2.707 7.5H8.5a.5.5 0 0 1 0 1H2.707l2.647 2.646a.5.5 0 0 1-.708.708l-3.5-3.5a.5.5 0 0 1 0-.708l3.5-3.5a.5.5 0 0 1 .708 0z"/>
+          </svg>
+        </span>
+      </button>
+      
+      {/* Seek backward button */}
+      <button 
+        onClick={() => handleSeek(-state.seekDuration)}
+        disabled={state.isLoading}
+        type="button" 
+        aria-label={`Seek backward ${state.seekDuration} seconds`}
         className="seek-button"
       >
         <span className="button-icon">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-            <g transform="scale(-1,1)" transform-origin="center">
-              <path d="M11.596 8.697l-6.363 3.692A.5.5 0 0 1 4.5 11.95V4.05a.5.5 0 0 1 .733-.44l6.363 3.692a.5.5 0 0 1 0 .88z"/>
-              <path d="M11.5 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5z"/>
-            </g>
+            <path d="M11.596 8.697l-6.363 3.692A.5.5 0 0 1 4.5 11.95V4.05a.5.5 0 0 1 .733-.44l6.363 3.692a.5.5 0 0 1 0 .88z"/>
+            <path d="M11.5 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5z"/>
           </svg>
         </span>
       </button>
@@ -322,16 +396,32 @@ const ControlBar: React.FC<ControlBarProps> = ({ className }) => {
       
       {/* Seek forward button */}
       <button 
-        onClick={() => handleSeek(10)}
+        onClick={() => handleSeek(state.seekDuration)}
         disabled={state.isLoading}
         type="button" 
-        aria-label="Seek forward 10 seconds"
+        aria-label={`Seek forward ${state.seekDuration} seconds`}
         className="seek-button"
       >
         <span className="button-icon">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
             <path d="M4.404 8.697l6.363 3.692a.5.5 0 0 0 .733-.44V4.05a.5.5 0 0 0-.733-.44L4.404 7.303a.5.5 0 0 0 0 .88z"/>
             <path d="M4.5 4a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 1 0v-7a.5.5 0 0 0-.5-.5z"/>
+          </svg>
+        </span>
+      </button>
+      
+      {/* Next sentence button */}
+      <button 
+        onClick={handleNextSentence}
+        disabled={state.isLoading}
+        type="button" 
+        aria-label="Next sentence"
+        className="sentence-button"
+      >
+        <span className="button-icon">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M12 8a.5.5 0 0 1-.5.5h-7a.5.5 0 0 1 0-1h7a.5.5 0 0 1 .5.5z"/>
+            <path d="M10.646 11.854a.5.5 0 0 1 0-.708L13.293 8.5H7.5a.5.5 0 0 1 0-1h5.793l-2.647-2.646a.5.5 0 0 1 .708-.708l3.5 3.5a.5.5 0 0 1 0 .708l-3.5 3.5a.5.5 0 0 1-.708 0z"/>
           </svg>
         </span>
       </button>
@@ -354,7 +444,9 @@ const ControlBar: React.FC<ControlBarProps> = ({ className }) => {
       {/* Speed control */}
       <div className="speed-control">
         <button 
-          onClick={() => handleSpeedChange(state.playbackRate === 1 ? 1.5 : state.playbackRate === 1.5 ? 2 : 1)}
+          onClick={() => {
+            handleSpeedChange(playbackRateOptions[(playbackRateOptions.indexOf(state.playbackRate) + 1) % playbackRateOptions.length])
+          }}
           type="button"
           aria-label={`Playback speed: ${state.playbackRate}x`}
           className="speed-button"

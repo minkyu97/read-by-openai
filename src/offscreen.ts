@@ -1,5 +1,3 @@
-import { onMessage } from "./message";
-
 class OffscreenAudioManager {
   private audioTag: HTMLAudioElement | null = null;
   private isPlaying = false;
@@ -11,7 +9,7 @@ class OffscreenAudioManager {
   }
 
   private init(): void {
-    onMessage(async (message, sender, sendResponse) => {
+    chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       try {
         switch (message.type) {
           case "audio":

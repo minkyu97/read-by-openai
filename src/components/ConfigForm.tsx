@@ -11,9 +11,7 @@ const ConfigForm: React.FC = () => {
     apiKey: '',
     model: 'tts-1',
     voice: 'alloy',
-    dbName: 'MyDB',
-    dbVersion: 1,
-    dbStoreName: 'data'
+    seekDuration: 10
   });
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
@@ -58,11 +56,11 @@ const ConfigForm: React.FC = () => {
   }, [config, showStatus]);
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
+    const { name, value, type } = e.target;
     if (isConfigKey(name)) {
       setConfig(prev => ({
         ...prev,
-        [name]: value
+        [name]: type === 'number' ? Number(value) : value
       }));
     }
   }, []);
@@ -102,6 +100,21 @@ const ConfigForm: React.FC = () => {
             <option value="nova">Nova</option>
             <option value="shimmer">Shimmer</option>
           </select>
+        </div>
+        
+        <div className="form-group">
+          <label htmlFor="seek-duration">Seek Duration (seconds):</label>
+          <input
+            type="number"
+            name="seekDuration"
+            id="seek-duration"
+            value={config.seekDuration}
+            onChange={handleInputChange}
+            min="1"
+            max="60"
+            required
+          />
+          <small className="help-text">Controls forward/backward skip duration (1-60 seconds)</small>
         </div>
 
         <button type="submit" disabled={loading} className="save-button">

@@ -96,6 +96,13 @@ class AudioManager {
 
     console.log('Playing sentence', this.textPointer, 'of', this.textQueue.length, ':', sentence.substring(0, 50));
     
+    // Send sentence update
+    await this.notifyContentScript({
+      type: "sentence-update",
+      current: this.textPointer,
+      total: this.textQueue.length
+    });
+    
     await this.setupOffscreenDocument();
     console.log('Sending audio message to offscreen document');
     
@@ -119,6 +126,56 @@ class AudioManager {
     
     console.log('tryNextLine called, current status:', this.playbackStatus);
     this.playbackStatus = OffscreenStatus.PLAYING;
+    await this.readNextLine();
+  }
+
+  private async goToNextSentence(): Promise<void> {
+    if (this.textPointer >= this.textQueue.length - 1) {
+      console.log('Already at last sentence');
+      return;
+    }
+
+    // Pause current playback
+    await sendOffscreenMessage({ type: "pause" });
+    
+    // Move to next sentence
+    this.textPointer++;
+    this.playbackStatus = OffscreenStatus.PLAYING;
+    
+    // Send update
+    await this.notifyContentScript({
+      type: "sentence-update",
+      current: this.textPointer + 1,
+      total: this.textQueue.length
+    });
+    
+    // Start playing the next sentence
+    await this.readNextLine();
+  }
+
+  private async goToPrevSentence(): Promise<void> {
+    if (this.textPointer <= 0) {
+      console.log('Already at first sentence');
+      return;
+    }
+
+    // Pause current playback
+    await sendOffscreenMessage({ type: "pause" });
+    
+    // Move to previous sentence
+    this.textPointer -= 2; // -2 because readNextLine will increment by 1
+    if (this.textPointer < -1) this.textPointer = -1;
+    
+    this.playbackStatus = OffscreenStatus.PLAYING;
+    
+    // Send update
+    await this.notifyContentScript({
+      type: "sentence-update",
+      current: this.textPointer + 2,
+      total: this.textQueue.length
+    });
+    
+    // Start playing the previous sentence
     await this.readNextLine();
   }
 
@@ -190,6 +247,11 @@ class AudioManager {
       console.log('Starting playback for', sentences.length, 'sentences');
       
       await this.notifyContentScript({ type: "playback-started" });
+      await this.notifyContentScript({
+        type: "sentence-update",
+        current: 1,
+        total: sentences.length
+      });
       await this.playFromFirstLine();
     } catch (error) {
       console.error('Error in readAloud:', error);
@@ -240,11 +302,11 @@ class AudioManager {
     }
   }
 
-  public async handleMessage(message: Message, sender?: chrome.runtime.MessageSender): Promise<void> {
+  public async handleMessage(message: Message, sender: chrome.runtime.MessageSender): Promise<void> {
     console.log('handleMessage called with:', message.type);
-    
+
     // Update current tab ID if message comes from a content script
-    if (sender?.tab?.id) {
+    if (sender.tab?.id) {
       this.currentTabId = sender.tab.id;
     }
 
@@ -287,11 +349,34 @@ class AudioManager {
       case "playback-progress":
         await this.notifyContentScript(message);
         break;
+      case "next-sentence":
+        await this.goToNextSentence();
+        break;
+      case "prev-sentence":
+        await this.goToPrevSentence();
+        break;
       case "config-update":
         // Reset OpenAI client to pick up new config
         this.openAIClient = null;
         break;
     }
+  }
+
+  public async handleConfigMessage(message: Message, sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void): Promise<void> {
+    console.log('handleConfigMessage called with:', message.type);
+    let response = undefined;
+
+    switch (message.type) {
+      case "get-config":
+        console.log('get-config message received, fetching config');
+        response = {
+          type: "config",
+          config: await getConfig(),
+        };
+        break;
+    }
+
+    sendResponse(response);
   }
 
   public getPlaybackStatus(): OffscreenStatus {
@@ -365,9 +450,14 @@ async function init(): Promise<void> {
   chrome.runtime.onMessage.addListener((message, sender) => {
     audioManager.handleMessage(message, sender);
   });
+
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    audioManager.handleConfigMessage(message, sender, sendResponse);
+    return true; // Keep the message channel open for async response
+  });
   
   // Add diagnostic command for testing
-  chrome.runtime.onMessage.addListener((message, sender) => {
+  chrome.runtime.onMessage.addListener((message) => {
     if (message.type === 'diagnose') {
       audioManager.diagnose();
     }

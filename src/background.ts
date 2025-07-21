@@ -85,13 +85,20 @@ class AudioManager {
     }
 
     const sentence = this.textQueue[this.textPointer++];
-    const audioData = this.cache.get(sentence);
+    let audioData = this.cache.get(sentence);
     
     if (!audioData) {
-      console.warn('Audio data not found for sentence:', sentence.substring(0, 50));
-      // Skip this sentence and try the next one
-      await this.tryNextLine();
-      return;
+      console.log('Audio not ready for sentence:', sentence.substring(0, 50), '- generating now');
+      // Generate audio for this sentence on-demand
+      try {
+        await this.generateAudio(sentence);
+        audioData = this.cache.get(sentence);
+      } catch (error) {
+        console.error('Failed to generate audio for sentence:', error);
+        // Skip this sentence and try the next one
+        await this.tryNextLine();
+        return;
+      }
     }
 
     console.log('Playing sentence', this.textPointer, 'of', this.textQueue.length, ':', sentence.substring(0, 50));
@@ -130,7 +137,7 @@ class AudioManager {
   }
 
   private async goToNextSentence(): Promise<void> {
-    if (this.textPointer >= this.textQueue.length - 1) {
+    if (this.textPointer >= this.textQueue.length) {
       console.log('Already at last sentence');
       return;
     }
@@ -138,16 +145,8 @@ class AudioManager {
     // Pause current playback
     await sendOffscreenMessage({ type: "pause" });
     
-    // Move to next sentence
-    this.textPointer++;
+    // Don't increment textPointer since readNextLine will do it
     this.playbackStatus = OffscreenStatus.PLAYING;
-    
-    // Send update
-    await this.notifyContentScript({
-      type: "sentence-update",
-      current: this.textPointer + 1,
-      total: this.textQueue.length
-    });
     
     // Start playing the next sentence
     await this.readNextLine();
@@ -263,19 +262,10 @@ class AudioManager {
     this.textPointer = 0;
 
     try {
-      console.log('Starting audio generation for', this.textQueue.length, 'sentences');
+      console.log('Starting playback for', this.textQueue.length, 'sentences');
       
-      // Generate audio for all sentences in parallel
-      const audioPromises = this.textQueue.map((sentence, index) => 
-        this.generateAudio(sentence).catch(error => {
-          console.error(`Audio generation failed for sentence ${index}: "${sentence.substring(0, 50)}"`, error);
-          // Don't let one failed sentence stop the others
-          return null;
-        })
-      );
-      
-      await Promise.all(audioPromises);
-      console.log('All audio generation completed');
+      // Start generating audio for future sentences in background
+      this.generateAudioInBackground();
       
       // Reset status to allow tryNextLine to proceed
       this.playbackStatus = OffscreenStatus.FINISHED;
@@ -284,6 +274,26 @@ class AudioManager {
       console.error('Error in playFromFirstLine:', error);
       await this.notifyContentScript({ type: "playback-error", error: error instanceof Error ? error.message : String(error) });
     }
+  }
+
+  private async generateAudioInBackground(): Promise<void> {
+    console.log('Starting background audio generation for', this.textQueue.length, 'sentences');
+    
+    // Generate audio for all sentences in parallel, but don't wait
+    const audioPromises = this.textQueue.map((sentence, index) => 
+      this.generateAudio(sentence).catch(error => {
+        console.error(`Audio generation failed for sentence ${index}: "${sentence.substring(0, 50)}"`, error);
+        // Don't let one failed sentence stop the others
+        return null;
+      })
+    );
+    
+    // Process in background - don't await
+    Promise.all(audioPromises).then(() => {
+      console.log('All background audio generation completed');
+    }).catch(error => {
+      console.error('Error in background audio generation:', error);
+    });
   }
 
   private async notifyContentScript(message: Message): Promise<void> {
@@ -332,7 +342,6 @@ class AudioManager {
         this.playbackStatus = OffscreenStatus.PLAYING;
         await sendOffscreenMessage({ type: "resume" });
         await this.notifyContentScript({ type: "playback-resumed" });
-        await this.tryNextLine();
         break;
       case "replay":
         await sendOffscreenMessage({ type: "pause" });

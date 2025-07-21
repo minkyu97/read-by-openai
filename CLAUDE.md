@@ -72,6 +72,14 @@ The extension uses Chrome's message passing API with TypeScript-typed messages (
 - **Audio Cache**: LRU cache in background script (up to 100MB)
 - **Playback State**: Managed by `AudioManager` with `OffscreenStatus` enum
 
+### Audio Playback Architecture
+
+The extension implements a streaming audio playback system:
+- **On-demand Generation**: Audio is generated for each sentence as needed, not all upfront
+- **Background Pre-generation**: While playing current sentence, future sentences are generated in parallel
+- **Seamless Playback**: Each sentence plays immediately after the previous one finishes, if audio is ready
+- **Error Resilience**: Failed audio generation for one sentence doesn't block others
+
 ### Key Technologies
 
 - **Frontend**: React 19, TypeScript
@@ -86,3 +94,10 @@ The extension uses Chrome's message passing API with TypeScript-typed messages (
 2. **Message Type Safety**: All Chrome runtime messages are typed via discriminated unions
 3. **Async Error Handling**: Consistent try-catch patterns with user notifications
 4. **React Mounting**: Careful DOM checks before mounting React components to prevent multiple initializations
+5. **Streaming Audio**: Audio generation happens in parallel with playback for smooth user experience
+
+## Recent Changes
+
+- Fixed pause/resume bug where resuming would skip to the next sentence
+- Implemented streaming audio generation to avoid waiting for all sentences to be generated before playback starts
+- Audio is now generated on-demand with background pre-generation for upcoming sentences
